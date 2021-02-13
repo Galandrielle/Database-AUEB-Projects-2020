@@ -1,0 +1,323 @@
+EXPLAIN ANALYZE
+SELECT "Host".id, COUNT(*) FROM "Listing", "Host" WHERE
+"Host".id = "Listing".host_id GROUP BY "Host".id;
+
+Before
+Messages: Successfully run. Total query runtime: 685 msec. 10 rows affected.
+HashAggregate  (cost=3636.60..3700.23 rows=6363 width=12) (actual time=259.963..261.879 rows=6363 loops=1)
+Group Key: "Host".id
+->  Hash Join  (cost=618.17..3578.89 rows=11541 width=4) (actual time=19.175..254.958 rows=11541 loops=1)
+Hash Cond: ("Listing".host_id = "Host".id)
+->  Seq Scan on "Listing"  (cost=0.00..2930.41 rows=11541 width=4) (actual time=0.010..229.088 rows=11541 loops=1)
+->  Hash  (cost=538.63..538.63 rows=6363 width=4) (actual time=19.133..19.133 rows=6363 loops=1)
+Buckets: 8192  Batches: 1  Memory Usage: 288kB
+->  Seq Scan on "Host"  (cost=0.00..538.63 rows=6363 width=4) (actual time=0.002..17.257 rows=6363 loops=1)
+Planning time: 4.398 ms
+
+After
+Messages: Successfully run. Total query runtime: 485 msec. 10 rows affected.
+HashAggregate  (cost=3636.60..3700.23 rows=6363 width=12) (actual time=64.571..66.640 rows=6363 loops=1)
+Group Key: "Host".id
+->  Hash Join  (cost=618.17..3578.89 rows=11541 width=4) (actual time=4.079..59.938 rows=11541 loops=1)
+Hash Cond: ("Listing".host_id = "Host".id)
+->  Seq Scan on "Listing"  (cost=0.00..2930.41 rows=11541 width=4) (actual time=0.010..44.302 rows=11541 loops=1)
+->  Hash  (cost=538.63..538.63 rows=6363 width=4) (actual time=4.031..4.031 rows=6363 loops=1)
+Buckets: 8192  Batches: 1  Memory Usage: 288kB
+->  Seq Scan on "Host"  (cost=0.00..538.63 rows=6363 width=4) (actual time=0.002..2.194 rows=6363 loops=1)
+Planning time: 1.479 ms
+Execution time: 67.953 ms
+
+/* Query 1: w/out index: 685 msec; w/index: 485 ms */
+
+
+EXPLAIN ANALYZE
+SELECT "Listing".id, "Price".price FROM "Listing", "Price" WHERE guests_included > 5
+AND price > 40;
+
+Before
+Messages: Total query runtime: 2 secs 686 msec. 8 rows affected.
+Nested Loop  (cost=0.00..6737.78 rows=288525 width=36) (actual time=0.037..1598.760 rows=2469774 loops=1)
+->  Seq Scan on "Listing"  (cost=0.00..2930.41 rows=11541 width=4) (actual time=0.006..6.627 rows=11541 loops=1)
+->  Materialize  (cost=0.00..200.88 rows=25 width=32) (actual time=0.000..0.047 rows=214 loops=11541)
+->  Seq Scan on "Price"  (cost=0.00..200.75 rows=25 width=32) (actual time=0.026..41.561 rows=214 loops=1)
+Filter: ((guests_included > 5) AND (price > '40'::numeric))
+Rows Removed by Filter: 11327
+Planning time: 0.957 ms
+Execution time: 2040.378 ms
+
+After Query_2
+Messages: Successfully run. Total query runtime: 2 secs 473 msec. 12 rows affected.
+Nested Loop  (cost=77.16..14319.68 rows=888657 width=36) (actual time=1.681..1508.424 rows=2469774 loops=1)
+->  Seq Scan on "Listing"  (cost=0.00..2930.41 rows=11541 width=4) (actual time=0.004..6.204 rows=11541 loops=1)
+->  Materialize  (cost=77.16..281.25 rows=77 width=32) (actual time=0.000..0.043 rows=214 loops=11541)
+->  Bitmap Heap Scan on "Price"  (cost=77.16..280.86 rows=77 width=32) (actual time=1.670..2.761 rows=214 loops=1)
+Recheck Cond: (price > '40'::numeric)
+Filter: (guests_included > 5)
+Rows Removed by Filter: 6514
+Heap Blocks: exact=146
+->  Bitmap Index Scan on query_2  (cost=0.00..77.14 rows=3847 width=0) (actual time=1.626..1.626 rows=6728 loops=1)
+Index Cond: (price > '40'::numeric)
+Planning time: 0.246 ms
+Execution time: 1947.881 ms
+
+After Query_2a
+Messages: Successfully run. Total query runtime: 2 secs 400 msec. 12 rows affected.
+Nested Loop  (cost=77.16..14319.68 rows=888657 width=36) (actual time=0.539..1508.066 rows=2469774 loops=1)
+->  Seq Scan on "Listing"  (cost=0.00..2930.41 rows=11541 width=4) (actual time=0.009..6.434 rows=11541 loops=1)
+->  Materialize  (cost=77.16..281.25 rows=77 width=32) (actual time=0.000..0.044 rows=214 loops=11541)
+->  Bitmap Heap Scan on "Price"  (cost=77.16..280.86 rows=77 width=32) (actual time=0.525..1.643 rows=214 loops=1)
+Recheck Cond: (price > '40'::numeric)
+Filter: (guests_included > 5)
+Rows Removed by Filter: 6514
+Heap Blocks: exact=146
+->  Bitmap Index Scan on query_2  (cost=0.00..77.14 rows=3847 width=0) (actual time=0.487..0.488 rows=6728 loops=1)
+Index Cond: (price > '40'::numeric)
+Planning time: 0.108 ms
+Execution time: 1953.785 ms
+
+/* Query 2: w/out index: 2 secs 686 msec; w/index2: 2 secs 473 msec; w/index2a: 2 secs 400 msec; */
+
+
+EXPLAIN ANALYZE
+SELECT 
+  public."Host".id,
+  public."Host".name,
+  public."Host".location,
+  public."Host".response_time,
+  public."Host".response_rate,
+  public."Host".neighbourhood
+  FROM public."Host"
+  FULL OUTER JOIN public."Listing"
+  ON public."Host".id = public."Listing".host_id
+  WHERE public."Host".response_time LIKE 'within an hour' AND public."Host".response_rate LIKE '100%';
+
+Before
+Messages: Successfully run. Total query runtime: 838 msec. 10 rows affected.
+Hash Right Join  (cost=597.26..3557.98 rows=3891 width=52) (actual time=4.331..19.410 rows=6695 loops=1)
+Hash Cond: ("Listing".host_id = "Host".id)
+->  Seq Scan on "Listing"  (cost=0.00..2930.41 rows=11541 width=4) (actual time=0.003..9.978 rows=11541 loops=1)
+->  Hash  (cost=570.44..570.44 rows=2145 width=52) (actual time=4.318..4.318 rows=3250 loops=1)
+Buckets: 4096  Batches: 1  Memory Usage: 313kB
+->  Seq Scan on "Host"  (cost=0.00..570.44 rows=2145 width=52) (actual time=0.011..2.868 rows=3250 loops=1)
+Filter: (((response_time)::text ~~ 'within an hour'::text) AND ((response_rate)::text ~~ '100%'::text))
+Rows Removed by Filter: 3113
+Planning time: 0.320 ms
+Execution time: 20.688 ms
+
+After
+Messages: Successfully run. Total query runtime: 637 msec. 10 rows affected.
+Hash Right Join  (cost=597.26..3557.98 rows=3891 width=52) (actual time=4.370..19.263 rows=6695 loops=1)
+Hash Cond: ("Listing".host_id = "Host".id)
+->  Seq Scan on "Listing"  (cost=0.00..2930.41 rows=11541 width=4) (actual time=0.003..9.823 rows=11541 loops=1)
+->  Hash  (cost=570.44..570.44 rows=2145 width=52) (actual time=4.357..4.358 rows=3250 loops=1)
+Buckets: 4096  Batches: 1  Memory Usage: 313kB
+->  Seq Scan on "Host"  (cost=0.00..570.44 rows=2145 width=52) (actual time=0.006..2.855 rows=3250 loops=1)
+Filter: (((response_time)::text ~~ 'within an hour'::text) AND ((response_rate)::text ~~ '100%'::text))
+Rows Removed by Filter: 3113
+Planning time: 0.538 ms
+Execution time: 20.554 ms
+
+/* Query 3: w/out index: 838 msec; w/index: 637 ms */
+
+
+EXPLAIN ANALYZE
+SELECT
+ public."Price".price,
+ public."Price".minimum_nights,
+ public."Price".maximum_nights,
+ public."Room".bathrooms,
+ public."Room".bedrooms,
+ public."Room".security_deposit
+ FROM public."Price"
+ FULL OUTER JOIN public."Room"
+ ON public."Price".id = public."Room".id
+  WHERE public."Room".bedrooms = '2'
+  ORDER BY public."Price".price ;
+
+Before
+Messages: Successfully run. Total query runtime: 1 secs 303 msec. 13 rows affected.
+Sort  (cost=5117.52..5125.68 rows=3265 width=54) (actual time=622.600..623.232 rows=3265 loops=1)
+Sort Key: "Price".price
+Sort Method: quicksort  Memory: 352kB
+->  Hash Left Join  (cost=228.12..4926.96 rows=3265 width=54) (actual time=19.833..620.025 rows=3265 loops=1)
+Hash Cond: ("Room".id = "Price".id)
+->  Seq Scan on "Room"  (cost=0.00..4676.26 rows=3265 width=18) (actual time=11.987..609.293 rows=3265 loops=1)
+Filter: (bedrooms = 2)
+Rows Removed by Filter: 8276
+->  Hash  (cost=182.50..182.50 rows=3650 width=44) (actual time=7.826..7.826 rows=11541 loops=1)
+Buckets: 16384 (originally 4096)  Batches: 1 (originally 1)  Memory Usage: 715kB
+->  Seq Scan on "Price"  (cost=0.00..182.50 rows=3650 width=44) (actual time=0.010..3.905 rows=11541 loops=1)
+Planning time: 1.695 ms
+Execution time: 623.877 ms
+
+After
+Messages: Successfully run. Total query runtime: 617 msec. 13 rows affected.
+Sort  (cost=5244.97..5253.14 rows=3265 width=54) (actual time=20.288..21.428 rows=3265 loops=1)
+Sort Key: "Price".price
+Sort Method: quicksort  Memory: 352kB
+->  Hash Right Join  (cost=4717.07..5054.41 rows=3265 width=54) (actual time=6.509..18.365 rows=3265 loops=1)
+Hash Cond: ("Price".id = "Room".id)
+->  Seq Scan on "Price"  (cost=0.00..261.41 rows=11541 width=44) (actual time=0.006..3.241 rows=11541 loops=1)
+->  Hash  (cost=4676.26..4676.26 rows=3265 width=18) (actual time=6.493..6.494 rows=3265 loops=1)
+Buckets: 4096  Batches: 1  Memory Usage: 193kB
+->  Seq Scan on "Room"  (cost=0.00..4676.26 rows=3265 width=18) (actual time=0.064..5.320 rows=3265 loops=1)
+Filter: (bedrooms = 2)
+Rows Removed by Filter: 8276
+Planning time: 0.242 ms
+Execution time: 22.153 ms
+
+/* Query 4: w/out index: 1 secs 303 msec; w/index (and index Query_2): 617 ms */
+
+
+EXPLAIN ANALYZE
+SELECT
+ public."Geolocation".geometry_coordinates_0_0_0_0,
+ public."Geolocation".type,
+ public."Geolocation".geometry_type,
+ public."Geolocation".properties_neighbourhood,
+ public."Neighbourhood".neighbourhood
+
+ FROM public."Geolocation"
+ INNER JOIN public."Neighbourhood"
+ ON public."Geolocation".properties_neighbourhood = public."Neighbourhood".neighbourhood
+ GROUP BY public."Geolocation".geometry_coordinates_0_0_0_0,
+ public."Geolocation".type, public."Geolocation".geometry_type,
+ public."Geolocation".properties_neighbourhood,
+ public."Neighbourhood".neighbourhood;
+
+Before
+Messages: Successfully run. Total query runtime: 678 msec. 10 rows affected.
+HashAggregate  (cost=17.82..18.27 rows=45 width=253) (actual time=2.556..2.570 rows=45 loops=1)
+Group Key: "Geolocation".geometry_coordinates_0_0_0_0, "Neighbourhood".neighbourhood
+->  Hash Join  (cost=2.01..17.59 rows=45 width=253) (actual time=1.499..2.522 rows=45 loops=1)
+Hash Cond: (("Geolocation".properties_neighbourhood)::text = ("Neighbourhood".neighbourhood)::text)
+->  Seq Scan on "Geolocation"  (cost=0.00..15.45 rows=45 width=232) (actual time=1.445..2.423 rows=45 loops=1)
+->  Hash  (cost=1.45..1.45 rows=45 width=21) (actual time=0.036..0.037 rows=45 loops=1)
+Buckets: 1024  Batches: 1  Memory Usage: 11kB
+->  Seq Scan on "Neighbourhood"  (cost=0.00..1.45 rows=45 width=21) (actual time=0.005..0.017 rows=45 loops=1)
+Planning time: 1.040 ms
+Execution time: 2.673 ms
+
+After Query_5
+Messages: Successfully run. Total query runtime: 519 msec. 10 rows affected.
+HashAggregate  (cost=17.82..18.27 rows=45 width=253) (actual time=0.150..0.163 rows=45 loops=1)
+Group Key: "Geolocation".geometry_coordinates_0_0_0_0, "Neighbourhood".neighbourhood
+->  Hash Join  (cost=2.01..17.59 rows=45 width=253) (actual time=0.057..0.119 rows=45 loops=1)
+Hash Cond: (("Geolocation".properties_neighbourhood)::text = ("Neighbourhood".neighbourhood)::text)
+->  Seq Scan on "Geolocation"  (cost=0.00..15.45 rows=45 width=232) (actual time=0.010..0.028 rows=45 loops=1)
+->  Hash  (cost=1.45..1.45 rows=45 width=21) (actual time=0.035..0.035 rows=45 loops=1)
+Buckets: 1024  Batches: 1  Memory Usage: 11kB
+->  Seq Scan on "Neighbourhood"  (cost=0.00..1.45 rows=45 width=21) (actual time=0.003..0.015 rows=45 loops=1)
+Planning time: 0.343 ms
+Execution time: 0.265 ms
+
+After Query_5a
+Messages: Successfully run. Total query runtime: 405 msec. 10 rows affected.
+HashAggregate  (cost=17.82..18.27 rows=45 width=253) (actual time=0.137..0.150 rows=45 loops=1)
+Group Key: "Geolocation".geometry_coordinates_0_0_0_0, "Neighbourhood".neighbourhood
+->  Hash Join  (cost=2.01..17.59 rows=45 width=253) (actual time=0.050..0.111 rows=45 loops=1)
+Hash Cond: (("Geolocation".properties_neighbourhood)::text = ("Neighbourhood".neighbourhood)::text)
+->  Seq Scan on "Geolocation"  (cost=0.00..15.45 rows=45 width=232) (actual time=0.010..0.026 rows=45 loops=1)
+->  Hash  (cost=1.45..1.45 rows=45 width=21) (actual time=0.033..0.033 rows=45 loops=1)
+Buckets: 1024  Batches: 1  Memory Usage: 11kB
+->  Seq Scan on "Neighbourhood"  (cost=0.00..1.45 rows=45 width=21) (actual time=0.004..0.015 rows=45 loops=1)
+Planning time: 0.239 ms
+Execution time: 0.238 ms
+
+/* Query 5: w/out index: 678 msec; w/index5: 519 ms; w/index5a: 405 ms */
+
+
+EXPLAIN ANALYZE
+SELECT 
+public."Host".id,
+public."Host".name,
+COUNT(public."Host".id)
+FROM public."Host"
+INNER JOIN public."Listing"
+ON public."Host".id = public."Listing".host_id
+GROUP BY public."Host".id, public."Host".name
+HAVING COUNT(public."Host".id) > 2
+ORDER BY COUNT(public."Host".id) desc;
+
+Before
+Messages: Successfully run. Total query runtime: 2 secs 167 msec. 15 rows affected.
+Sort  (cost=4131.08..4146.99 rows=6363 width=20) (actual time=27.172..27.315 rows=735 loops=1)
+Sort Key: (count("Host".id)) DESC
+Sort Method: quicksort  Memory: 81kB
+->  HashAggregate  (cost=3665.45..3729.08 rows=6363 width=20) (actual time=25.918..26.867 rows=735 loops=1)
+Group Key: "Host".id
+Filter: (count("Host".id) > 2)
+Rows Removed by Filter: 5628
+->  Hash Join  (cost=618.17..3578.89 rows=11541 width=12) (actual time=4.509..21.165 rows=11541 loops=1)
+Hash Cond: ("Listing".host_id = "Host".id)
+->  Seq Scan on "Listing"  (cost=0.00..2930.41 rows=11541 width=4) (actual time=0.005..10.465 rows=11541 loops=1)
+->  Hash  (cost=538.63..538.63 rows=6363 width=12) (actual time=4.470..4.470 rows=6363 loops=1)
+Buckets: 8192  Batches: 1  Memory Usage: 344kB
+->  Seq Scan on "Host"  (cost=0.00..538.63 rows=6363 width=12) (actual time=0.003..2.382 rows=6363 loops=1)
+Planning time: 0.214 ms
+Execution time: 27.607 ms
+
+After
+Messages: Successfully run. Total query runtime: 453 msec. 15 rows affected.
+Sort  (cost=4131.08..4146.99 rows=6363 width=20) (actual time=33.544..33.688 rows=735 loops=1)
+Sort Key: (count("Host".id)) DESC
+Sort Method: quicksort  Memory: 81kB
+->  HashAggregate  (cost=3665.45..3729.08 rows=6363 width=20) (actual time=32.313..33.244 rows=735 loops=1)
+Group Key: "Host".id
+Filter: (count("Host".id) > 2)
+Rows Removed by Filter: 5628
+->  Hash Join  (cost=618.17..3578.89 rows=11541 width=12) (actual time=4.541..25.447 rows=11541 loops=1)
+Hash Cond: ("Listing".host_id = "Host".id)
+->  Seq Scan on "Listing"  (cost=0.00..2930.41 rows=11541 width=4) (actual time=0.004..10.460 rows=11541 loops=1)
+->  Hash  (cost=538.63..538.63 rows=6363 width=12) (actual time=4.504..4.504 rows=6363 loops=1)
+Buckets: 8192  Batches: 1  Memory Usage: 344kB
+->  Seq Scan on "Host"  (cost=0.00..538.63 rows=6363 width=12) (actual time=0.002..2.345 rows=6363 loops=1)
+Planning time: 2.037 ms
+Execution time: 33.951 ms
+
+/* Query 6: w/out index: 1 secs 254 msec; w/index (and index Query_1 and Query_3): 453 ms */
+
+
+EXPLAIN ANALYZE
+SELECT
+public."Amenity".amenity_id,
+public."Amenity".amenity_name
+FROM public."Amenity"
+INNER JOIN public."Amenity_Room"
+ON public."Amenity".amenity_id = public."Amenity_Room".amenity_id
+WHERE public."Amenity".amenity_name LIKE 'S%'
+ORDER BY public."Amenity".amenity_name;
+
+Before
+Messages: Successfully run. Total query runtime: 923 msec. 13 rows affected.
+Sort  (cost=279.13..282.67 rows=1416 width=18) (actual time=65.456..65.462 rows=25 loops=1)
+Sort Key: "Amenity".amenity_name
+Sort Method: quicksort  Memory: 26kB
+->  Hash Join  (cost=4.79..205.02 rows=1416 width=18) (actual time=39.985..65.400 rows=25 loops=1)
+Hash Cond: ("Amenity_Room".amenity_id = "Amenity".amenity_id)
+->  Seq Scan on "Amenity_Room"  (cost=0.00..169.40 rows=11740 width=4) (actual time=39.910..60.544 rows=11740 loops=1)
+->  Hash  (cost=4.49..4.49 rows=24 width=18) (actual time=0.051..0.051 rows=25 loops=1)
+Buckets: 1024  Batches: 1  Memory Usage: 10kB
+->  Seq Scan on "Amenity"  (cost=0.00..4.49 rows=24 width=18) (actual time=0.017..0.040 rows=25 loops=1)
+Filter: ((amenity_name)::text ~~ 'S%'::text)
+Rows Removed by Filter: 174
+Planning time: 0.264 ms
+Execution time: 65.496 ms
+
+After
+Messages: Successfully run. Total query runtime: 397 msec. 13 rows affected.
+Sort  (cost=279.13..282.67 rows=1416 width=18) (actual time=4.899..4.904 rows=25 loops=1)
+Sort Key: "Amenity".amenity_name
+Sort Method: quicksort  Memory: 26kB
+->  Hash Join  (cost=4.79..205.02 rows=1416 width=18) (actual time=0.057..4.855 rows=25 loops=1)
+Hash Cond: ("Amenity_Room".amenity_id = "Amenity".amenity_id)
+->  Seq Scan on "Amenity_Room"  (cost=0.00..169.40 rows=11740 width=4) (actual time=0.008..2.556 rows=11740 loops=1)
+->  Hash  (cost=4.49..4.49 rows=24 width=18) (actual time=0.038..0.038 rows=25 loops=1)
+Buckets: 1024  Batches: 1  Memory Usage: 10kB
+->  Seq Scan on "Amenity"  (cost=0.00..4.49 rows=24 width=18) (actual time=0.007..0.028 rows=25 loops=1)
+Filter: ((amenity_name)::text ~~ 'S%'::text)
+Rows Removed by Filter: 174
+Planning time: 1.851 ms
+Execution time: 4.932 ms
+
+/* Query 7: w/out index: 923 msec; w/index: 397 ms */
